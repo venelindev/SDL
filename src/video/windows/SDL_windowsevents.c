@@ -1158,6 +1158,35 @@ static bool DispatchModalLoopMessageHook(HWND *hwnd, UINT *msg, WPARAM *wParam, 
     return false;
 }
 
+static int WIN_IsCustomTitleBarTopHit(HWND hwnd, POINT cursorPoint)
+{
+    // Looks like adjustment happening in NCCALCSIZE is messing with the detection
+    // of the top hit area so manually fixing that.
+    UINT dpi = GetDpiForWindow(hwnd);
+    int border_x = GetSystemMetricsForDpi(SM_CXFRAME, dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+    int border_y = GetSystemMetricsForDpi(SM_CYFRAME, dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+
+    RECT window_rect;
+    GetWindowRect(hwnd, &window_rect);
+
+    POINT window_bottom_right;
+    window_bottom_right.x = (float)window_rect.right;
+    window_bottom_right.y = (float)window_rect.bottom;
+    ScreenToClient(hwnd, &window_bottom_right);
+    if (cursorPoint.y >= 0 && cursorPoint.y < border_y) {
+        if (cursorPoint.x < border_x) {
+            return HTTOPLEFT;
+        }
+        if (cursorPoint.x >= window_bottom_right.x - 2 * border_x) {
+            return HTTOPRIGHT;
+        }
+
+        // TopBorder
+        return HTTOP;
+    }
+    return HTNOWHERE;
+}
+
 LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     SDL_WindowData *data;
@@ -1430,6 +1459,19 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         returnCode = 0;
     } break;
 
+    case WM_NCMOUSEMOVE:
+    {
+        SDL_Window *window = data->window;
+        if (window->flags & SDL_WINDOW_CUSTOM_TITLEBAR) {
+            POINT cursorPoint;
+            cursorPoint.x = (float)GET_X_LPARAM(lParam);
+            cursorPoint.y = (float)GET_Y_LPARAM(lParam);
+            ScreenToClient(hwnd, &cursorPoint);
+            window->custom_titlebar_top_hit = WIN_IsCustomTitleBarTopHit(hwnd, cursorPoint);
+        }
+        break;
+    }
+
     case WM_MOUSEMOVE:
     {
         SDL_Window *window = data->window;
@@ -1464,6 +1506,13 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 lParam != data->last_pointer_update) {
                 SDL_SendMouseMotion(WIN_GetEventTimestamp(), window, SDL_GLOBAL_MOUSE_ID, false, (float)GET_X_LPARAM(lParam), (float)GET_Y_LPARAM(lParam));
             }
+        }
+
+        if (window->flags & SDL_WINDOW_CUSTOM_TITLEBAR) {
+            POINT cursorPoint;
+            cursorPoint.x = (float)GET_X_LPARAM(lParam);
+            cursorPoint.y = (float)GET_Y_LPARAM(lParam);
+            window->custom_titlebar_top_hit = WIN_IsCustomTitleBarTopHit(hwnd, cursorPoint);
         }
 
     } break;
@@ -1675,6 +1724,21 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             ScreenToClient(hwnd, &cursorPos);
             PostMessage(hwnd, WM_MOUSEMOVE, 0, cursorPos.x | (((Uint32)((Sint16)cursorPos.y)) << 16));
         }
+
+        // Clicks on buttons will be handled in WM_NCLBUTTONUP, but we still need
+        // to remove default handling of the click to avoid it counting as drag.
+        if (data->window->flags & SDL_WINDOW_CUSTOM_TITLEBAR && wParam == HTMAXBUTTON) {
+            return 0;
+        }
+
+    } break;
+    case WM_NCLBUTTONUP:
+    {
+        if (data->window->flags & SDL_WINDOW_CUSTOM_TITLEBAR && wParam == HTMAXBUTTON) {
+            int mode = data->window->flags & SDL_WINDOW_MAXIMIZED ? SW_NORMAL : SW_MAXIMIZE;
+            ShowWindow(hwnd, mode);
+            return 0;
+        }        
     } break;
 
     case WM_CAPTURECHANGED:
@@ -2287,6 +2351,30 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 params->rgrc[0].bottom = params->rgrc[0].top + h;
             }
             return 0;
+        } else if (window_flags & SDL_WINDOW_CUSTOM_TITLEBAR) {
+            UINT dpi = GetDpiForWindow(hwnd);
+
+            int frame_x = GetSystemMetricsForDpi(SM_CXFRAME, dpi);
+            int frame_y = GetSystemMetricsForDpi(SM_CYFRAME, dpi);
+            int padding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+
+            NCCALCSIZE_PARAMS *params = (NCCALCSIZE_PARAMS *)lParam;
+            RECT *requestedClientRect = params->rgrc;
+
+            requestedClientRect->right -= frame_x + padding;
+            requestedClientRect->left += frame_x + padding;
+            requestedClientRect->bottom -= frame_y + padding;
+
+            WINDOWPLACEMENT placement = { 0 };
+            placement.length = sizeof(WINDOWPLACEMENT);
+
+            // Has to be 0 if not maximized otherwise the default titlebar is drawn as well
+            if (window_flags & SDL_WINDOW_MAXIMIZED) {
+                requestedClientRect->top += frame_y + padding;
+            }
+
+            return 0;
+
         }
     } break;
 
@@ -2296,6 +2384,27 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         if (window->flags & SDL_WINDOW_TOOLTIP) {
             return HTTRANSPARENT;
+        }
+
+        if (window->flags & SDL_WINDOW_CUSTOM_TITLEBAR) {
+            // Let the default procedure handle resizing areas
+            LRESULT hit = DefWindowProc(hwnd, msg, wParam, lParam);
+            switch (hit) {
+            case HTNOWHERE:
+            case HTRIGHT:
+            case HTLEFT:
+            case HTTOPLEFT:
+            case HTTOP:
+            case HTTOPRIGHT:
+            case HTBOTTOMRIGHT:
+            case HTBOTTOM:
+            case HTBOTTOMLEFT:
+                return hit;
+            }
+            if (window->custom_titlebar_top_hit)
+            {
+                return window->custom_titlebar_top_hit;
+            }
         }
 
         if (window->hit_test) {
@@ -2344,6 +2453,10 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                     POST_HIT_TEST(HTBOTTOMLEFT);
                 case SDL_HITTEST_RESIZE_LEFT:
                     POST_HIT_TEST(HTLEFT);
+                case SDL_HITTEST_MINIMIZE:
+                    POST_HIT_TEST(HTMINBUTTON);
+                case SDL_HITTEST_MAXIMIZE:
+                    POST_HIT_TEST(HTMAXBUTTON);
 #undef POST_HIT_TEST
                 case SDL_HITTEST_NORMAL:
                     return HTCLIENT;

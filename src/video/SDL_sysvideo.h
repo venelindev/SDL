@@ -108,6 +108,7 @@ struct SDL_Window
     bool constrain_popup;
     bool is_destroying;
     bool is_dropping; // drag/drop in progress, expecting SDL_SendDropComplete().
+    int custom_titlebar_top_hit;
 
     int safe_inset_left;
     int safe_inset_right;

@@ -306,6 +306,16 @@ bool WIN_AdjustWindowRectForHWND(HWND hwnd, LPRECT lpRect, UINT frame_dpi)
     return true;
 }
 
+int WIN_CustomTitleBarHeight(HWND hWnd)
+{
+    UINT dpi = GetDpiForWindow(hWnd);
+    int titleBarHeight = GetSystemMetricsForDpi(SM_CYCAPTION, dpi);
+
+    int sizingBorderThickness = GetSystemMetricsForDpi(SM_CYFRAME, dpi);
+    int topPadding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+    return titleBarHeight + sizingBorderThickness + topPadding;
+}
+
 bool WIN_SetWindowPositionInternal(SDL_Window *window, UINT flags, SDL_WindowRect rect_type)
 {
     SDL_Window *child_window;
@@ -324,6 +334,11 @@ bool WIN_SetWindowPositionInternal(SDL_Window *window, UINT flags, SDL_WindowRec
     }
 
     WIN_AdjustWindowRect(window, &x, &y, &w, &h, rect_type);
+
+    if (window->flags & SDL_WINDOW_CUSTOM_TITLEBAR)
+    {
+        y += WIN_CustomTitleBarHeight(hwnd);
+    }
 
     data->expected_resize = true;
     if (SetWindowPos(hwnd, top, x, y, w, h, flags) == 0) {

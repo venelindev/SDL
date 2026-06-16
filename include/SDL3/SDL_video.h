@@ -220,7 +220,7 @@ typedef Uint64 SDL_WindowFlags;
 #define SDL_WINDOW_METAL                SDL_UINT64_C(0x0000000020000000)    /**< window usable for Metal view */
 #define SDL_WINDOW_TRANSPARENT          SDL_UINT64_C(0x0000000040000000)    /**< window with transparent buffer */
 #define SDL_WINDOW_NOT_FOCUSABLE        SDL_UINT64_C(0x0000000080000000)    /**< window should not be focusable */
-
+#define SDL_WINDOW_CUSTOM_TITLEBAR      SDL_UINT64_C(0x0000000100000000)    /**< window has a custom titlebar */
 
 /**
  * A magic value used with SDL_WINDOWPOS_UNDEFINED.
@@ -2863,7 +2863,9 @@ typedef enum SDL_HitTestResult
     SDL_HITTEST_RESIZE_BOTTOMRIGHT, /**< Region is the resizable bottom-right corner border. */
     SDL_HITTEST_RESIZE_BOTTOM,      /**< Region is the resizable bottom border. */
     SDL_HITTEST_RESIZE_BOTTOMLEFT,  /**< Region is the resizable bottom-left corner border. */
-    SDL_HITTEST_RESIZE_LEFT         /**< Region is the resizable left border. */
+    SDL_HITTEST_RESIZE_LEFT,        /**< Region is the resizable left border. */
+    SDL_HITTEST_MINIMIZE,           /**< Region is the minimize button. */
+    SDL_HITTEST_MAXIMIZE            /**< Region is the maximize button. */
 } SDL_HitTestResult;
 
 /**
