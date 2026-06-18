@@ -373,6 +373,13 @@ extern SDL_DECLSPEC SDL_AssertState SDLCALL SDL_ReportAssertion(SDL_AssertData *
 #  endif
 #endif /* !SDL_AssertBreakpoint */
 
+#if defined(_MSC_VER)
+#include <sal.h>
+#define SDL_analysis_assume(condition) _Analysis_assume_(condition)
+#else
+#define SDL_analysis_assume(condition) ((void)0)
+#endif
+
 /**
  * The macro used when an assertion is enabled.
  *
@@ -406,6 +413,7 @@ extern SDL_DECLSPEC SDL_AssertState SDLCALL SDL_ReportAssertion(SDL_AssertData *
             } \
             break; /* not retrying. */ \
         } \
+        SDL_analysis_assume(condition); \
     } while (SDL_NULL_WHILE_LOOP_CONDITION)
 
 #ifdef SDL_WIKI_DOCUMENTATION_SECTION
