@@ -1173,6 +1173,12 @@ static int WIN_IsCustomTitleBarTopHit(HWND hwnd, POINT cursorPoint)
     window_bottom_right.x = (float)window_rect.right;
     window_bottom_right.y = (float)window_rect.bottom;
     ScreenToClient(hwnd, &window_bottom_right);
+
+    WINDOWPLACEMENT placement;
+    if (GetWindowPlacement(hwnd, &placement) && placement.showCmd == SW_MAXIMIZE) {
+        return HTNOWHERE;
+    }
+
     if (cursorPoint.y >= 0 && cursorPoint.y < border_y) {
         if (cursorPoint.x < border_x) {
             return HTTOPLEFT;
@@ -1735,6 +1741,7 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_NCLBUTTONUP:
     {
         if (data->window->flags & SDL_WINDOW_CUSTOM_TITLEBAR && wParam == HTMAXBUTTON) {
+            //SDL_MaximizeWindow(data->window);
             int mode = data->window->flags & SDL_WINDOW_MAXIMIZED ? SW_NORMAL : SW_MAXIMIZE;
             ShowWindow(hwnd, mode);
             return 0;
@@ -2366,10 +2373,8 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             requestedClientRect->bottom -= frame_y + padding;
 
             WINDOWPLACEMENT placement = { 0 };
-            placement.length = sizeof(WINDOWPLACEMENT);
-
             // Has to be 0 if not maximized otherwise the default titlebar is drawn as well
-            if (window_flags & SDL_WINDOW_MAXIMIZED) {
+            if (GetWindowPlacement(hwnd, &placement) && placement.showCmd == SW_MAXIMIZE) {
                 requestedClientRect->top += frame_y + padding;
             }
 
